@@ -71,6 +71,16 @@ fun OcrImportCard(
         }
     }
 
+    fun useItems(items: List<TimetableTextParser.Item>) {
+        parsed = items
+        selected = items.indices.toSet()
+        error = if (items.isEmpty()) {
+            "没有自动解析出课程。可以手动修改识别文字后再解析。"
+        } else {
+            null
+        }
+    }
+
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
@@ -84,7 +94,14 @@ fun OcrImportCard(
             if (result.ok) {
                 source = result.source
                 text = result.text
-                reparse()
+                if (result.lines.isNotEmpty()) {
+                    val imageItems = withContext(Dispatchers.Default) {
+                        com.kexu.campus.data.TimetableImageParser.parse(result.lines, defaultWeeks)
+                    }
+                    if (imageItems.isNotEmpty()) useItems(imageItems) else reparse()
+                } else {
+                    reparse()
+                }
             } else {
                 error = result.error
             }

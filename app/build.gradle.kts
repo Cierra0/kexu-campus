@@ -13,8 +13,8 @@ android {
         applicationId = "com.kexu.campus"
         minSdk = 26
         targetSdk = 35
-        versionCode = 29
-        versionName = "0.9.11"
+        versionCode = 51
+        versionName = "0.9.33"
     }
 
     buildTypes {

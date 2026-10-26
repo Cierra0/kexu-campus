@@ -306,20 +306,18 @@ private fun SchoolWebScreen(
                 return i !== pw && ['text','tel','email','number'].indexOf(i.type) >= 0 &&
                   /user|account|name|学号|工号|账号|用户名|login/i.test((i.name||'') + (i.id||'') + (i.placeholder||''));
               })[0] || all.filter(function(i){ return i.type === 'text'; })[0];
-              if (user) {
+              if (user && !user.value) {
                 user.value = username;
                 user.dispatchEvent(new Event('input', { bubbles: true }));
                 user.dispatchEvent(new Event('change', { bubbles: true }));
               }
-              pw.value = password;
-              pw.dispatchEvent(new Event('input', { bubbles: true }));
-              pw.dispatchEvent(new Event('change', { bubbles: true }));
-              var btn = doc.querySelector('input[type=submit], button[type=submit]') ||
-                Array.prototype.slice.call(doc.querySelectorAll('button')).filter(function(b){
-                  return /登录|登陆|login|submit/i.test(b.innerText || b.value || '');
-                })[0];
-              if (btn) { btn.click(); return true; }
-              return false;
+              // 只在密码框为空时填充；绝不自动点登录，避免旧密码反复提交
+              if (!pw.value) {
+                pw.value = password;
+                pw.dispatchEvent(new Event('input', { bubbles: true }));
+                pw.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+              return true;
             }
             if (fill(document)) return 'filled';
             var frames = document.querySelectorAll('iframe');
@@ -342,10 +340,10 @@ private fun SchoolWebScreen(
             val primary = decodeJs(result)
             if (primary.isBlank()) {
                 view.evaluateJavascript("(document.documentElement ? document.documentElement.innerText : '')") { fallback ->
-                    onExtract(decodeJs(fallback).take(300_000), kind)
+                    onExtract(decodeJs(fallback).take(60_000), kind)
                 }
             } else {
-                onExtract(primary.take(300_000), kind)
+                onExtract(primary.take(60_000), kind)
             }
         }
     }
@@ -478,6 +476,8 @@ private fun SchoolWebScreen(
                   textStart: text.slice(0, 300),
                   htmlLength: document.documentElement.outerHTML.length,
                   iframes: iframes,
+                  cookiesLength: (document.cookie || '').length,
+                  localStorageKeys: (function(){try{return Object.keys(localStorage).slice(0,20);}catch(e){return [];}})(),
                   brands: (navigator.userAgentData && navigator.userAgentData.brands)
                     ? navigator.userAgentData.brands.map(function(b){ return b.brand; }) : [],
                   ua: navigator.userAgent
@@ -494,6 +494,19 @@ private fun SchoolWebScreen(
                 decodeJs(result).ifBlank { "没有取到页面信息" }
             showDiag = true
         }
+    }
+
+    fun clearWebData() {
+        runCatching {
+            CookieManager.getInstance().removeAllCookies(null)
+            CookieManager.getInstance().flush()
+            android.webkit.WebStorage.getInstance().deleteAllData()
+            webView?.clearCache(true)
+            webView?.clearHistory()
+            webView?.clearFormData()
+        }
+        Toast.makeText(context, "已清除网页缓存和登录 Cookie，重新登录一次", Toast.LENGTH_LONG).show()
+        webView?.loadUrl(startUrl)
     }
 
     fun openInSystemBrowser() {
@@ -539,6 +552,7 @@ private fun SchoolWebScreen(
                 Text(if (desktopMode) "手机版" else "桌面版", fontSize = 11.sp)
             }
             TextButton(onClick = { runDiagnostics() }) { Text("诊断", fontSize = 11.sp) }
+            TextButton(onClick = { clearWebData() }) { Text("清缓存", fontSize = 11.sp) }
             TextButton(onClick = { openInSystemBrowser() }) { Text("浏览器打开", fontSize = 11.sp) }
             TextButton(onClick = { saveCurrentAsTarget("timetable") }) { Text("设为课表页", fontSize = 11.sp) }
             TextButton(onClick = { saveCurrentAsTarget("grades") }) { Text("设为成绩页", fontSize = 11.sp) }
@@ -563,8 +577,9 @@ private fun SchoolWebScreen(
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         settings.databaseEnabled = true
-                        settings.javaScriptCanOpenWindowsAutomatically = true
-                        settings.setSupportMultipleWindows(true)
+                        // 和烫梨一致：不开多窗口/自动弹窗，工作台 SPA 的新窗口逻辑会被打乱
+                        settings.javaScriptCanOpenWindowsAutomatically = false
+                        settings.setSupportMultipleWindows(false)
                         settings.loadWithOverviewMode = true
                         settings.useWideViewPort = true
                         settings.setSupportZoom(true)
@@ -574,6 +589,8 @@ private fun SchoolWebScreen(
                         // 和烫梨一致：不伪造 UA，只去掉 WebView 标记，避免办事大厅/aTrust 误判
                         settings.userAgentString = settings.userAgentString.replace("; wv", "")
                         CookieManager.getInstance().setAcceptCookie(true)
+                        importantForAutofill =
+                            android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                         webChromeClient = object : WebChromeClient() {
                             override fun onConsoleMessage(msg: android.webkit.ConsoleMessage): Boolean {
@@ -592,6 +609,10 @@ private fun SchoolWebScreen(
                                 val popup = WebView(ctx).apply {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
+                                    settings.databaseEnabled = true
+                                    settings.userAgentString = settings.userAgentString.replace("; wv", "")
+                                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                                     webViewClient = object : WebViewClient() {
                                         override fun onPageStarted(
                                             view: WebView?,
@@ -619,6 +640,16 @@ private fun SchoolWebScreen(
                             }
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 loading = false
+                                // aTrust 应用中心按视口宽度决定是否显示卡片；窄视口只出空壳。
+                                if (!url.isNullOrBlank() && url.contains("/portal/")) {
+                                    view?.evaluateJavascript(
+                                        "(function(){try{var m=document.querySelector('meta[name=viewport]');" +
+                                            "if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}" +
+                                            "m.content='width=1280, initial-scale=0.8, maximum-scale=3, user-scalable=yes';" +
+                                            "document.documentElement.style.minWidth='1280px';return 'OK';}catch(e){return 'ERR';}})()",
+                                        null
+                                    )
+                                }
                                 if (!autoLogin || !store.hasAccount()) return
 
                                 fun tryAutoLogin() {

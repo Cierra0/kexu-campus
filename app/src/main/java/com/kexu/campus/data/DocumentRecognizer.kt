@@ -28,11 +28,23 @@ import java.util.zip.ZipInputStream
  */
 object DocumentRecognizer {
 
+    data class OcrLine(
+        val text: String,
+        val left: Int,
+        val top: Int,
+        val right: Int,
+        val bottom: Int
+    ) {
+        val centerX: Int get() = (left + right) / 2
+        val centerY: Int get() = (top + bottom) / 2
+    }
+
     data class Result(
         val ok: Boolean,
         val text: String = "",
         val error: String = "",
-        val source: String = ""
+        val source: String = "",
+        val lines: List<OcrLine> = emptyList()
     )
 
     fun recognize(context: Context, uri: Uri, displayName: String): Result = runCatching {
@@ -46,8 +58,10 @@ object DocumentRecognizer {
                 Result(true, pdfText(context, uri), source = "PDF")
 
             lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") ||
-                lower.endsWith(".webp") || type.startsWith("image/") ->
-                Result(true, imageText(context, uri), source = "图片")
+                lower.endsWith(".webp") || type.startsWith("image/") -> {
+                val (text, lines) = imageText(context, uri)
+                Result(true, text, source = "图片", lines = lines)
+            }
 
             else -> Result(false, error = "不支持的文件类型，请选择 PDF / .docx / 图片")
         }
@@ -133,14 +147,14 @@ object DocumentRecognizer {
 
     // ---------------- 图片 ----------------
 
-    private fun imageText(context: Context, uri: Uri): String {
+    private fun imageText(context: Context, uri: Uri): Pair<String, List<OcrLine>> {
         val original = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
             ?: error("无法读取图片")
         val scaled = scaleDown(original, 2400)
-        val text = ocr(scaled)
+        val (text, lines) = ocrLines(scaled)
         if (scaled !== original) original.recycle()
         scaled.recycle()
-        return text
+        return text to lines
     }
 
     private fun scaleDown(bitmap: Bitmap, maxSide: Int): Bitmap {
@@ -163,6 +177,35 @@ object DocumentRecognizer {
                 TimeUnit.SECONDS
             )
             result.text
+        } finally {
+            runCatching { recognizer.close() }
+        }
+    }
+
+    private fun ocrLines(bitmap: Bitmap): Pair<String, List<OcrLine>> {
+        val recognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
+        return try {
+            val result = Tasks.await(
+                recognizer.process(InputImage.fromBitmap(bitmap, 0)),
+                30,
+                TimeUnit.SECONDS
+            )
+            val lines = mutableListOf<OcrLine>()
+            for (block in result.textBlocks) {
+                for (line in block.lines) {
+                    val box = line.boundingBox ?: continue
+                    lines.add(
+                        OcrLine(
+                            text = line.text,
+                            left = box.left,
+                            top = box.top,
+                            right = box.right,
+                            bottom = box.bottom
+                        )
+                    )
+                }
+            }
+            result.text to lines
         } finally {
             runCatching { recognizer.close() }
         }

@@ -255,7 +255,14 @@ fun AppRoot(repo: CampusRepository, data: CampusData) {
                     onOpenImport = { navController.navigate("import") },
                     onOpenAdBlock = { navController.navigate("adblock") },
                     onOpenFocus = { navController.navigate("focus") },
-                    onOpenSchoolSync = { navController.navigate("schoolSync") }
+                    onOpenSchoolSync = { navController.navigate("schoolSync") },
+                    onCleared = {
+                        navController.navigate("timetable") {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
                 )
             }
 

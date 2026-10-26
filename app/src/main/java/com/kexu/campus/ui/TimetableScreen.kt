@@ -82,6 +82,18 @@ fun TimetableScreen(
     LaunchedEffect(currentWeek) {
         week = currentWeek
     }
+    // 已导入课程但开学日期为空（清空数据/旧版本导入）：自动把本周一设为第 1 周，保证课表能显示
+    LaunchedEffect(settings.startDate, data.courses.size) {
+        if (settings.startDate.isBlank() && data.courses.isNotEmpty()) {
+            repo.updateSettings {
+                it.copy(
+                    startDate = java.time.LocalDate.now()
+                        .with(java.time.DayOfWeek.MONDAY).toString(),
+                    totalWeeks = maxOf(it.totalWeeks, 20)
+                )
+            }
+        }
+    }
 
     ScreenScaffold(
         title = settings.schoolName.ifBlank { "校序" },
@@ -107,7 +119,7 @@ fun TimetableScreen(
     ) {
         if (settings.startDate.isBlank()) {
             Column(Modifier.padding(16.dp)) {
-                SetupCard(onOpenSettings = onOpenSettings)
+                SetupCard(onOpenSettings = onOpenSettings, onOpenSync = onOpenSync)
             }
         } else {
             WeekSelector(
@@ -171,19 +183,23 @@ fun TimetableScreen(
 }
 
 @Composable
-private fun SetupCard(onOpenSettings: () -> Unit) {
+private fun SetupCard(onOpenSettings: () -> Unit, onOpenSync: () -> Unit) {
     SectionCard(title = "第一步 · 设置学期") {
         Text(
             "先填写开学日期和总周数，课表就会自动定位到本周，并在每周切换时保持正确。",
             style = MaterialTheme.typography.bodyMedium
         )
         Spacer(Modifier.height(12.dp))
-        Button(onClick = onOpenSettings) { Text("去设置") }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onOpenSettings) { Text("去设置") }
+            OutlinedButton(onClick = onOpenSync) { Text("登录系统导入") }
+        }
     }
     Spacer(Modifier.height(12.dp))
     SectionCard(title = "第二步 · 导入课表") {
         Text(
-            "支持三种方式：① CSV 文件导入；② 粘贴同学的分享码；③ 手动加课。\n所有数据只保存在本机，不需要登录任何学校系统。",
+            "支持四种方式：① 登录学校教务系统读取；② CSV 文件导入；③ 粘贴同学的分享码；④ 手动加课。\n" +
+                "所有数据只保存在本机，不需要登录任何学校系统。",
             style = MaterialTheme.typography.bodyMedium
         )
     }

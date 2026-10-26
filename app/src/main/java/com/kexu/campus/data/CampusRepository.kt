@@ -74,12 +74,25 @@ class CampusRepository(context: Context) {
     }
 
     fun addCourses(courses: List<Course>) = update { data ->
-        data.copy(courses = data.courses + courses)
+        val settings = withStartDateIfNeeded(data.settings, courses)
+        data.copy(courses = data.courses + courses, settings = settings)
     }
 
     /** 教务同步：只替换上一次从教务同步来的课程，保留手动/导入/分享的课程。 */
     fun replaceSyncedCourses(courses: List<Course>) = update { data ->
-        data.copy(courses = data.courses.filterNot { it.source == "jwglxt" } + courses)
+        val syncedSources = setOf("jwglxt", "zhengfang", "qiangzhi")
+        val settings = withStartDateIfNeeded(data.settings, courses)
+        data.copy(
+            courses = data.courses.filterNot { it.source in syncedSources } + courses,
+            settings = settings
+        )
+    }
+
+    /** 没设开学日期时，把本周周一设为第 1 周，避免导入了课程但课表页显示“先设置学期”。 */
+    private fun withStartDateIfNeeded(settings: Settings, courses: List<Course>): Settings {
+        if (settings.startDate.isNotBlank() || courses.isEmpty()) return settings
+        val monday = LocalDate.now().with(DayOfWeek.MONDAY).toString()
+        return settings.copy(startDate = monday, totalWeeks = maxOf(settings.totalWeeks, 20))
     }
 
     /** 教务同步成绩：按「学期+课程名」合并，保留已有 id。 */

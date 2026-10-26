@@ -113,6 +113,51 @@ fun SchoolSyncScreen(
             extractedKind = result.data?.getStringExtra(SchoolWebViewActivity.EXTRA_KIND).orEmpty()
             if (extractedText.isBlank()) {
                 Toast.makeText(context, "没有读到内容，请确认已登录并打开课表/成绩页面", Toast.LENGTH_LONG).show()
+            } else if (extractedKind == "zfdomkb") {
+                val parsed = com.kexu.campus.data.ZhengfangDomTimetable.parse(
+                    extractedText,
+                    data.settings.totalWeeks
+                )
+                if (parsed.courses.isEmpty()) {
+                    Toast.makeText(
+                        context,
+                        "课表表格解析失败：${parsed.warnings.firstOrNull() ?: "请确认在课表页"}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    // 清空数据后开学日期为空：从正方页面「第8周 / 10-26」反推第1周周一
+                    if (data.settings.startDate.isBlank() &&
+                        parsed.currentWeek != null &&
+                        parsed.mondayText.isNotBlank()
+                    ) {
+                        val md = Regex("(\\d{1,2})-(\\d{1,2})").find(parsed.mondayText)
+                        val week = parsed.currentWeek
+                        if (md != null && week != null && week > 0) {
+                            runCatching {
+                                val year = java.time.LocalDate.now().year
+                                val monday = java.time.LocalDate.of(
+                                    year,
+                                    md.groupValues[1].toInt(),
+                                    md.groupValues[2].toInt()
+                                )
+                                val start = monday.minusWeeks((week - 1).toLong())
+                                    .with(java.time.DayOfWeek.MONDAY)
+                                repo.updateSettings {
+                                    it.copy(
+                                        startDate = start.toString(),
+                                        totalWeeks = maxOf(it.totalWeeks, 20)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    pendingCourses = parsed.courses
+                    Toast.makeText(
+                        context,
+                        "解析到 ${parsed.courses.size} 门课，请确认导入",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             } else if (extractedKind == "qzgrades") {
                 val parsed = com.kexu.campus.data.QiangzhiGradesParser.parse(extractedText)
                 if (parsed.grades.isEmpty()) {
@@ -184,17 +229,19 @@ fun SchoolSyncScreen(
         if (url.isBlank()) return
         repo.updateSettings { it.copy(syncEntryUrl = url, syncSchoolName = name) }
         lastSchool = name
-        webLauncher.launch(
-            Intent(context, SchoolWebViewActivity::class.java).apply {
-                putExtra(SchoolWebViewActivity.EXTRA_URL, url)
-                putExtra(SchoolWebViewActivity.EXTRA_TITLE, name)
-                putExtra(SchoolWebViewActivity.EXTRA_AUTO_LOGIN, autoLogin)
-                putExtra(SchoolWebViewActivity.EXTRA_AUTO_READ, autoRead)
-                putExtra(SchoolWebViewActivity.EXTRA_TARGET, target)
-                putExtra(SchoolWebViewActivity.EXTRA_AUTO_EHALL, autoEhall)
-                putExtra(SchoolWebViewActivity.EXTRA_EHALL_TARGET, ehallTarget)
-            }
-        )
+        // 东华理工用原生兼容 WebView（烫梨同款），Compose WebView 渲染不出工作台卡片
+        val intent = if (profile.isEcut) {
+            Intent(context, CompatWebActivity::class.java)
+        } else {
+            Intent(context, SchoolWebViewActivity::class.java)
+        }
+        intent.putExtra(SchoolWebViewActivity.EXTRA_URL, url)
+        intent.putExtra(SchoolWebViewActivity.EXTRA_TITLE, name)
+        intent.putExtra(SchoolWebViewActivity.EXTRA_AUTO_LOGIN, autoLogin)
+        intent.putExtra(SchoolWebViewActivity.EXTRA_AUTO_READ, autoRead)
+        intent.putExtra(SchoolWebViewActivity.EXTRA_TARGET, target)
+        intent.putExtra(CompatWebActivity.EXTRA_EHALL_TARGET, ehallTarget)
+        webLauncher.launch(intent)
     }
 
     fun saveAccount() {
@@ -236,7 +283,7 @@ fun SchoolSyncScreen(
                 Toast.LENGTH_LONG
             ).show()
         }
-        openUrl(start, lastSchool.ifBlank { "教务同步" }, autoLogin = true, autoRead = target.isNotBlank(), target = kind)
+        openUrl(start, lastSchool.ifBlank { "教务同步" }, autoLogin = false, autoRead = target.isNotBlank(), target = kind)
     }
 
     ScreenScaffold(
@@ -337,36 +384,50 @@ fun SchoolSyncScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {
+                                // 烫梨模式：先登录 aTrust 工作台，再点「新教务管理系统」带 SSO ticket 进正方
                                 openUrl(
                                     profile.loginUrl.ifBlank { profile.jwBase },
                                     profile.name,
-                                    autoLogin = store.hasAccount(),
-                                    autoEhall = profile.isEcut,
+                                    autoLogin = false,
+                                    autoEhall = false,
                                     ehallTarget = "timetable"
                                 )
                             },
                             modifier = Modifier.weight(1f)
-                        ) { Text("登录教务·课表") }
+                        ) { Text("登录统一门户") }
                         OutlinedButton(
                             onClick = {
                                 openUrl(
                                     profile.loginUrl.ifBlank { profile.jwBase },
                                     profile.name,
-                                    autoLogin = store.hasAccount(),
-                                    autoEhall = profile.isEcut,
+                                    autoLogin = false,
+                                    autoEhall = false,
                                     ehallTarget = "grades"
                                 )
                             },
                             modifier = Modifier.weight(1f)
-                        ) { Text("登录教务·成绩") }
+                        ) { Text("登录·成绩") }
                     }
                     Spacer(Modifier.height(4.dp))
                     TextButton(onClick = { startSync("timetable") }) {
                         Text("按已保存页面导入", fontSize = 11.sp)
                     }
+                    if (profile.isEcut) {
+                        TextButton(
+                            onClick = {
+                                openUrl(
+                                    profile.jwBase + "kbcx/xskbcx_cxXskbcxIndex.html?gnmkdm=N2151&layout=default",
+                                    profile.name,
+                                    autoLogin = false,
+                                    autoEhall = false
+                                )
+                            }
+                        ) { Text("直接打开正方教务（跳过工作台）", fontSize = 11.sp) }
+                    }
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "登录后进入办事大厅/教务系统，打开课表或成绩页，点顶部「导入此页课表/成绩」。",
+                        "登录后进入工作台/办事大厅，点「新教务管理系统」或办事大厅卡片；" +
+                            "进入课表或成绩页后点顶部「导入此页课表/成绩」。",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -760,6 +821,56 @@ fun SchoolSyncScreen(
                 }
             }
         }
+    }
+
+    if (pendingCourses.isNotEmpty() || pendingGrades.isNotEmpty()) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {
+                pendingCourses = emptyList()
+                pendingGrades = emptyList()
+            },
+            title = { Text("识别到可导入内容") },
+            text = {
+                Column {
+                    if (pendingCourses.isNotEmpty()) {
+                        Text("课表：${pendingCourses.size} 门课", fontWeight = FontWeight.SemiBold)
+                        pendingCourses.take(8).forEach { course ->
+                            Text("· ${course.name}（${course.sessions.size} 个时段）", fontSize = 12.sp)
+                        }
+                        if (pendingCourses.size > 8) Text("…等 ${pendingCourses.size} 门", fontSize = 12.sp)
+                    }
+                    if (pendingGrades.isNotEmpty()) {
+                        if (pendingCourses.isNotEmpty()) Spacer(Modifier.height(8.dp))
+                        Text("成绩：${pendingGrades.size} 条", fontWeight = FontWeight.SemiBold)
+                        pendingGrades.take(8).forEach { grade ->
+                            Text("· ${grade.courseName} · ${grade.credit} 学分 · ${grade.score} 分", fontSize = 12.sp)
+                        }
+                        if (pendingGrades.size > 8) Text("…等 ${pendingGrades.size} 条", fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (pendingCourses.isNotEmpty()) {
+                        repo.replaceSyncedCourses(pendingCourses)
+                        Toast.makeText(context, "已导入 ${pendingCourses.size} 门课", Toast.LENGTH_SHORT).show()
+                    }
+                    if (pendingGrades.isNotEmpty()) {
+                        repo.upsertGrades(pendingGrades)
+                        Toast.makeText(context, "已导入 ${pendingGrades.size} 条成绩", Toast.LENGTH_SHORT).show()
+                    }
+                    pendingCourses = emptyList()
+                    pendingGrades = emptyList()
+                    onBack()
+                }) { Text("确认导入") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingCourses = emptyList()
+                    pendingGrades = emptyList()
+                }) { Text("取消") }
+            }
+        )
     }
 }
 
