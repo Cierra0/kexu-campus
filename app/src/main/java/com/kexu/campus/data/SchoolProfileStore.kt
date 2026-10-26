@@ -15,11 +15,8 @@ object SchoolProfileStore {
         val profile = runCatching {
             Json.decodeFromString(SchoolProfile.serializer(), raw)
         }.getOrDefault(SchoolProfile.ECUT)
-        // 旧版本把登录地址存成了 aTrust 工作台/正方直连/代理办事大厅，统一迁移到烫梨模式的办事大厅
-        return if (profile.isEcut &&
-            !profile.loginUrl.contains("ehall.ecut.edu.cn") &&
-            !profile.loginUrl.contains("ehall-ecut-edu-cn-s")
-        ) {
+        // 旧版本把登录地址存成了办事大厅/正方直连，统一迁移回烫梨模式的 aTrust 应用中心
+        return if (profile.isEcut && !profile.loginUrl.contains("atrust1.ecut.edu.cn")) {
             profile.copy(loginUrl = SchoolProfile.ECUT.loginUrl).also { save(context, it) }
         } else {
             profile

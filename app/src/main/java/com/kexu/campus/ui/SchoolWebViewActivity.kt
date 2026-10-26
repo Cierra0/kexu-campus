@@ -414,7 +414,6 @@ private fun SchoolWebScreen(
     // 等办事大厅跳转到 aTrust 代理域名后，直接打开对应的正方页面并自动读取。
     LaunchedEffect(autoEhall, webView, loading) {
         if (!autoEhall || autoEhallDone) return@LaunchedEffect
-        val targetText = if (ehallTarget == "grades") "学生成绩查询" else "学生课表查询(新)"
         repeat(60) {
             val w = webView ?: return@LaunchedEffect
             val u = w.url.orEmpty()
@@ -423,6 +422,12 @@ private fun SchoolWebScreen(
                 kotlinx.coroutines.delay(2200)
                 extract(if (ehallTarget == "grades") "grades" else "timetable")
                 return@LaunchedEffect
+            }
+            // aTrust 应用中心点「新教务管理系统」；办事大厅点「学生课表查询(新)」
+            val targetText = when {
+                u.contains("/portal/") && !u.contains("/jwglxt/") -> "新教务管理系统"
+                ehallTarget == "grades" -> "学生成绩查询"
+                else -> "学生课表查询(新)"
             }
             if (u.contains("ehall") || u.contains("atrust")) {
                 w.evaluateJavascript(ehallTickJs(targetText)) { raw ->
