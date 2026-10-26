@@ -55,7 +55,7 @@ data class SchoolProfile(
             name = "东华理工大学",
             vendor = "zhengfang",
             jwBase = "https://172-20-130-13.atrust.ecut.edu.cn/jwglxt/",
-            loginUrl = "https://atrust1.ecut.edu.cn/portal/#/app_center",
+            loginUrl = "https://172-20-130-13.atrust.ecut.edu.cn/jwglxt/xtgl/index_initMenu.html?jsdm=xs",
             access = "atrust",
             hosts = listOf("*.ecut.edu.cn", "172.20.130.13"),
             verified = true,

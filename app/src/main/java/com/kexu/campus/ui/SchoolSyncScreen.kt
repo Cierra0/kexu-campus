@@ -52,6 +52,7 @@ import com.kexu.campus.data.SchoolProfile
 import com.kexu.campus.data.SchoolProfileStore
 import com.kexu.campus.data.SchoolSite
 import com.kexu.campus.data.TimetableTextParser
+import com.kexu.campus.data.ZhengfangSource
 
 /**
  * 学校教务直通：
@@ -346,25 +347,23 @@ fun SchoolSyncScreen(
                         Button(
                             onClick = {
                                 if (isEcut) {
-                                    ecutLauncher.launch(
-                                        Intent(context, EcutSyncActivity::class.java)
-                                            .putExtra(EcutSyncActivity.EXTRA_KIND, "timetable")
-                                    )
+                                    ZhengfangSource.timetableUrl(profile)?.let { url ->
+                                        openUrl(url, profile.name, autoLogin = store.hasAccount())
+                                    } ?: startSync("timetable")
                                 } else {
                                     startSync("timetable")
                                 }
                             },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text(if (isEcut) "同步课表（东华理工）" else "一键同步课表")
+                            Text(if (isEcut) "登录正方·同步课表" else "一键同步课表")
                         }
                         OutlinedButton(
                             onClick = {
                                 if (isEcut) {
-                                    ecutLauncher.launch(
-                                        Intent(context, EcutSyncActivity::class.java)
-                                            .putExtra(EcutSyncActivity.EXTRA_KIND, "grades")
-                                    )
+                                    ZhengfangSource.gradesUrl(profile)?.let { url ->
+                                        openUrl(url, profile.name, autoLogin = store.hasAccount())
+                                    } ?: startSync("grades")
                                 } else {
                                     startSync("grades")
                                 }
@@ -383,22 +382,18 @@ fun SchoolSyncScreen(
                                 if (!url.startsWith("http")) {
                                     Toast.makeText(
                                         context,
-                                        "先在 Chrome 登录 aTrust → 新教务管理系统 → 复制地址栏 URL",
+                                        "先在 Chrome 复制课表页地址栏 URL",
                                         Toast.LENGTH_LONG
                                     ).show()
                                 } else {
-                                    ecutLauncher.launch(
-                                        Intent(context, EcutSyncActivity::class.java)
-                                            .putExtra(EcutSyncActivity.EXTRA_KIND, "timetable")
-                                            .putExtra(EcutSyncActivity.EXTRA_TARGET_URL, url)
-                                    )
+                                    openUrl(url, profile.name, autoLogin = store.hasAccount())
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("从剪贴板 URL 同步课表") }
+                        ) { Text("从剪贴板 URL 打开课表页") }
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "如果 aTrust 工作台在 App 里空白：用 Chrome 登录 → 点「新教务管理系统」→ 复制课表页地址栏 URL → 回来点上面的按钮。",
+                            "如果登录页/工作台空白：用 Chrome 登录后复制课表页地址栏 URL，这里直接打开，然后点顶部「导入此页课表」。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -408,41 +403,39 @@ fun SchoolSyncScreen(
 
             item {
                 if (profile.isEcut) {
-                    SectionCard(title = "东华理工统一门户同步（实验）") {
-                    Text(
-                        "优先直连 aTrust 教务代理节点（172-20-130-13.atrust.ecut.edu.cn）→ 失效时回退 aTrust 工作台，" +
-                            "自动点「新教务管理系统」→ 抓取正方课表/成绩。先在上面保存账号可自动登录。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                ecutLauncher.launch(
-                                    Intent(context, EcutSyncActivity::class.java)
-                                        .putExtra(EcutSyncActivity.EXTRA_KIND, "timetable")
-                                )
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("同步课表") }
-                        OutlinedButton(
-                            onClick = {
-                                ecutLauncher.launch(
-                                    Intent(context, EcutSyncActivity::class.java)
-                                        .putExtra(EcutSyncActivity.EXTRA_KIND, "grades")
-                                )
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("同步成绩") }
+                    SectionCard(title = "东华理工：直接登录正方（推荐）") {
+                        Text(
+                            "不要走 aTrust 工作台（在部分手机 WebView 里会空白）。这里直接打开正方教务，" +
+                                "登录后点顶部「导入此页课表/成绩」即可。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    ZhengfangSource.timetableUrl(profile)?.let { url ->
+                                        openUrl(url, profile.name, autoLogin = store.hasAccount())
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("登录正方·课表") }
+                            OutlinedButton(
+                                onClick = {
+                                    ZhengfangSource.gradesUrl(profile)?.let { url ->
+                                        openUrl(url, profile.name, autoLogin = store.hasAccount())
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("登录正方·成绩") }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "如果登录后又被弹回登录页：退出其他设备上的 aTrust 会话再试；进入正方页面后点「导入此页课表」。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "同步成功会直接写入本机：课表按 jxb_id 聚合、成绩按学期+课程名合并；同步前不会删除自定义课程。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
                 }
             }
 

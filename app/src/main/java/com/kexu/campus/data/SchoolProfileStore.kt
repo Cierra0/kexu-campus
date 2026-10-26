@@ -12,9 +12,15 @@ object SchoolProfileStore {
     fun load(context: Context): SchoolProfile {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY, null) ?: return SchoolProfile.ECUT
-        return runCatching {
+        val profile = runCatching {
             Json.decodeFromString(SchoolProfile.serializer(), raw)
         }.getOrDefault(SchoolProfile.ECUT)
+        // 旧版本把东华理工登录地址存成了 aTrust 工作台（在 WebView 里会空白），迁移到正方直连
+        return if (profile.isEcut && profile.loginUrl.contains("atrust1.ecut.edu.cn")) {
+            profile.copy(loginUrl = SchoolProfile.ECUT.loginUrl).also { save(context, it) }
+        } else {
+            profile
+        }
     }
 
     fun save(context: Context, profile: SchoolProfile) {
