@@ -55,14 +55,14 @@ data class SchoolProfile(
             name = "东华理工大学",
             vendor = "zhengfang",
             jwBase = "https://172-20-130-13.atrust.ecut.edu.cn/jwglxt/",
-            loginUrl = "https://172-20-130-13.atrust.ecut.edu.cn/jwglxt/xtgl/index_initMenu.html?jsdm=xs",
+            loginUrl = "https://ehall-ecut-edu-cn-s.atrust.ecut.edu.cn/new/index.html",
             access = "atrust",
             hosts = listOf("*.ecut.edu.cn", "172.20.130.13"),
             verified = true,
             ecutFeatures = true
         )
 
-        fun custom(input: String, vendor: String? = null): SchoolProfile? {
+        fun custom(input: String, schoolName: String? = null, vendor: String? = null): SchoolProfile? {
             val url = normalizeUrl(input) ?: return null
             val host = hostOf(url)
             if (host.isBlank()) return null
@@ -89,7 +89,7 @@ data class SchoolProfile(
             parentDomain(host)?.let { hosts.add("*.$it") }
             return SchoolProfile(
                 id = ID_CUSTOM,
-                name = "自定义学校",
+                name = schoolName?.trim()?.ifBlank { null } ?: "自定义学校",
                 vendor = v,
                 jwBase = base,
                 loginUrl = url,

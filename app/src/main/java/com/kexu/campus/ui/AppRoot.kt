@@ -59,6 +59,13 @@ fun AppRoot(repo: CampusRepository, data: CampusData) {
     val context = LocalContext.current
     var updateRelease by remember { mutableStateOf<UpdateChecker.Release?>(null) }
     var crashText by remember { mutableStateOf("") }
+    var showOnboarding by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        val onboarded = context.getSharedPreferences("kexu_onboarding", Context.MODE_PRIVATE)
+            .getBoolean("done", false)
+        if (!onboarded) showOnboarding = true
+    }
 
     LaunchedEffect(Unit) {
         crashText = Feedback.readAndClearCrash(context)
@@ -105,6 +112,38 @@ fun AppRoot(repo: CampusRepository, data: CampusData) {
                         .edit().putString("ignored_version", release.version).apply()
                     updateRelease = null
                 }) { Text("忽略此版本") }
+            }
+        )
+    }
+
+    if (showOnboarding) {
+        AlertDialog(
+            onDismissRequest = { showOnboarding = false },
+            title = { Text("欢迎使用校序") },
+            text = {
+                Text(
+                    "导入课表只需要三步：\n\n" +
+                        "1. 选择学校：内置 1515 所高校的教务入口，也可手动输入学校名和教务网址\n" +
+                        "2. 登录教务系统：在 App 内登录（遇到验证码/短信验证按提示完成）\n" +
+                        "3. 导入课表：进入课表页后点顶部「导入此页课表」，先预览、确认后写入\n\n" +
+                        "也可以在「工具 → 导入/分享」用文件、图片 OCR 或分享码导入。",
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    context.getSharedPreferences("kexu_onboarding", Context.MODE_PRIVATE)
+                        .edit().putBoolean("done", true).apply()
+                    showOnboarding = false
+                    runCatching { navController.navigate("schoolSync") }
+                }) { Text("去选择学校") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    context.getSharedPreferences("kexu_onboarding", Context.MODE_PRIVATE)
+                        .edit().putBoolean("done", true).apply()
+                    showOnboarding = false
+                }) { Text("先看看") }
             }
         )
     }

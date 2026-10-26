@@ -40,11 +40,6 @@
             android:exported="false" />
 
         <activity
-            android:name=".ui.EcutSyncActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
-            android:exported="false" />
-
-        <activity
             android:name=".ui.LockHomeActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
             android:excludeFromRecents="true"

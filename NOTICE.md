@@ -14,6 +14,13 @@
   - 0.8.x 东华理工同步流程参考其 `CampusSyncClient.java` / `JwglxtFetcher.java` / `Grades.java`（aTrust 节点嗅探、正方 `kbList` 课表接口、jqGrid 成绩 DOM 列映射），已用 Kotlin 重写并适配
 - 若后续移植 v1.2.4 及以后（GPL-3.0）的代码，会在对应文件保留其版权声明；本项目同为 GPL-3.0，满足许可证兼容要求。
 
+## 高校教务入口目录
+
+- 来源：https://github.com/baoozak/timetable（`utils/schools.json`）
+- 许可证：**MIT**（Copyright (c) baoozak），保留原始版权声明
+- 使用位置：`app/src/main/assets/school-directory.json`（1515 条高校教务入口，烫梨 1.2.5 内置同源数据）
+- 说明：公开整理、未逐一核实；App 内仅供选择学校时填写名称/入口 URL，用户需自行确认并遵守学校规定
+
 ## anti-AD
 
 - 仓库：https://github.com/privacy-protection-tools/anti-AD

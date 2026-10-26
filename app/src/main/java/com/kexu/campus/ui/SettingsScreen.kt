@@ -268,7 +268,7 @@ fun SettingsScreen(
 
             item {
                 SectionCard(title = "关于校序") {
-                    Text("校序 v0.9.7 · GPL-3.0 开源", style = MaterialTheme.typography.bodyMedium)
+                    Text("校序 v0.9.9 · GPL-3.0 开源", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "反馈邮箱：${com.kexu.campus.AppConfig.CONTACT_EMAIL}",

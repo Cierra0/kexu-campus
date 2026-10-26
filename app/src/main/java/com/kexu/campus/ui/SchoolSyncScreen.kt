@@ -48,11 +48,10 @@ import com.kexu.campus.data.Grade
 import com.kexu.campus.data.GradeTextParser
 import com.kexu.campus.data.JwglxtKbParser
 import com.kexu.campus.data.SchoolDirectory
+import com.kexu.campus.data.SchoolEntry
 import com.kexu.campus.data.SchoolProfile
 import com.kexu.campus.data.SchoolProfileStore
-import com.kexu.campus.data.SchoolSite
 import com.kexu.campus.data.TimetableTextParser
-import com.kexu.campus.data.ZhengfangSource
 
 /**
  * 学校教务直通：
@@ -92,6 +91,7 @@ fun SchoolSyncScreen(
     }
     var profile by remember { mutableStateOf(SchoolProfileStore.load(context)) }
     var customSchoolInput by rememberSaveable { mutableStateOf("") }
+    var customSchoolName by rememberSaveable { mutableStateOf("") }
     val isEcut = profile.isEcut
     var extractedText by remember { mutableStateOf("") }
     var extractedKind by remember { mutableStateOf("") }
@@ -169,18 +169,6 @@ fun SchoolSyncScreen(
             } else {
                 gradeItems = GradeTextParser.parse(extractedText)
             }
-        }
-    }
-
-    val ecutLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val count = result.data?.getIntExtra(EcutSyncActivity.EXTRA_COUNT, 0) ?: 0
-        val message = result.data?.getStringExtra(EcutSyncActivity.EXTRA_MESSAGE).orEmpty()
-        if (count > 0) {
-            Toast.makeText(context, "同步成功：$message", Toast.LENGTH_LONG).show()
-        } else if (message.isNotBlank()) {
-            Toast.makeText(context, "同步未完成：$message", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -330,109 +318,46 @@ fun SchoolSyncScreen(
             }
 
             item {
-                SectionCard(title = "一键同步（点一下才读取）") {
+                SectionCard(title = "登录教务系统") {
                     Text(
-                        if (timetableTarget.isBlank()) "课表页：未设置——先登录，进入课表页后点「设为课表页」"
-                        else "课表页：已保存",
-                        fontSize = 12.sp,
+                        "当前：${profile.name} · ${profile.vendorLabel} · ${profile.accessLabel}",
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        if (gradesTarget.isBlank()) "成绩页：未设置" else "成绩页：已保存",
-                        fontSize = 12.sp,
+                        "入口：${profile.loginUrl.ifBlank { profile.jwBase }}",
+                        fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {
-                                if (isEcut) {
-                                    ZhengfangSource.timetableUrl(profile)?.let { url ->
-                                        openUrl(url, profile.name, autoLogin = store.hasAccount())
-                                    } ?: startSync("timetable")
-                                } else {
-                                    startSync("timetable")
-                                }
+                                openUrl(
+                                    profile.loginUrl.ifBlank { profile.jwBase },
+                                    profile.name,
+                                    autoLogin = store.hasAccount()
+                                )
                             },
                             modifier = Modifier.weight(1f)
-                        ) {
-                            Text(if (isEcut) "登录正方·同步课表" else "一键同步课表")
-                        }
+                        ) { Text("登录教务系统") }
                         OutlinedButton(
-                            onClick = {
-                                if (isEcut) {
-                                    ZhengfangSource.gradesUrl(profile)?.let { url ->
-                                        openUrl(url, profile.name, autoLogin = store.hasAccount())
-                                    } ?: startSync("grades")
-                                } else {
-                                    startSync("grades")
-                                }
-                            },
+                            onClick = { startSync("timetable") },
                             modifier = Modifier.weight(1f)
-                        ) {
-                            Text("同步成绩")
-                        }
+                        ) { Text("按已保存页面导入") }
                     }
-                    Spacer(Modifier.height(8.dp))
-                    if (isEcut) {
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = {
-                                val url = readClipboard(context).trim()
-                                if (!url.startsWith("http")) {
-                                    Toast.makeText(
-                                        context,
-                                        "先在 Chrome 复制课表页地址栏 URL",
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                } else {
-                                    openUrl(url, profile.name, autoLogin = store.hasAccount())
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("从剪贴板 URL 打开课表页") }
-                        Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "登录后进入办事大厅/教务系统，打开课表或成绩页，点顶部「导入此页课表/成绩」。",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (timetableTarget.isNotBlank() || gradesTarget.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            "如果登录页/工作台空白：用 Chrome 登录后复制课表页地址栏 URL，这里直接打开，然后点顶部「导入此页课表」。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            item {
-                if (profile.isEcut) {
-                    SectionCard(title = "东华理工：直接登录正方（推荐）") {
-                        Text(
-                            "不要走 aTrust 工作台（在部分手机 WebView 里会空白）。这里直接打开正方教务，" +
-                                "登录后点顶部「导入此页课表/成绩」即可。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = {
-                                    ZhengfangSource.timetableUrl(profile)?.let { url ->
-                                        openUrl(url, profile.name, autoLogin = store.hasAccount())
-                                    }
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) { Text("登录正方·课表") }
-                            OutlinedButton(
-                                onClick = {
-                                    ZhengfangSource.gradesUrl(profile)?.let { url ->
-                                        openUrl(url, profile.name, autoLogin = store.hasAccount())
-                                    }
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) { Text("登录正方·成绩") }
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "如果登录后又被弹回登录页：退出其他设备上的 aTrust 会话再试；进入正方页面后点「导入此页课表」。",
-                            style = MaterialTheme.typography.bodySmall,
+                            "已保存页面：课表${if (timetableTarget.isBlank()) "未设置" else "已设置"} · " +
+                                "成绩${if (gradesTarget.isBlank()) "未设置" else "已设置"}",
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -517,6 +442,14 @@ fun SchoolSyncScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
+                        value = customSchoolName,
+                        onValueChange = { customSchoolName = it },
+                        label = { Text("学校名称（可选，如 华东理工大学）") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
                         value = customSchoolInput,
                         onValueChange = { customSchoolInput = it },
                         label = { Text("粘贴学校教务网址（如 …/jwglxt/ 或 …/jsxsd/）") },
@@ -527,7 +460,7 @@ fun SchoolSyncScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {
-                                val p = SchoolProfile.custom(customSchoolInput)
+                                val p = SchoolProfile.custom(customSchoolInput, customSchoolName)
                                 if (p == null) {
                                     Toast.makeText(context, "网址无效，请填完整教务网址", Toast.LENGTH_LONG).show()
                                 } else {
@@ -664,25 +597,72 @@ fun SchoolSyncScreen(
             }
 
             item {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text("搜索学校（输入校名）") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            items(SchoolDirectory.search(query), key = { it.name }) { school ->
-                SchoolRow(
-                    school = school,
-                    onOpenSite = { openUrl(school.siteUrl, school.name) },
-                    onOpenEntry = if (school.entryUrl.isNotBlank()) {
-                        { openUrl(school.entryUrl, school.name) }
-                    } else {
-                        null
+                SectionCard(title = "选择学校（收录 1515 所教务入口）") {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        label = { Text("搜学校名，如 华东理工") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("东华理工大学", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text(
+                                "已适配 · 烫梨模式（办事大厅代理）",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                profile = SchoolProfile.ECUT
+                                SchoolProfileStore.save(context, SchoolProfile.ECUT)
+                                Toast.makeText(context, "已选择东华理工大学", Toast.LENGTH_SHORT).show()
+                            }
+                        ) { Text("使用", fontSize = 12.sp) }
                     }
-                )
+                    Spacer(Modifier.height(4.dp))
+                    val results = SchoolDirectory.search(context, query, 30)
+                    results.forEach { entry ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(entry.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Text(
+                                    "${entry.vendorLabel} · ${entry.loginUrl.take(70)}",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Button(
+                                onClick = {
+                                    val p = SchoolProfile.custom(entry.loginUrl, entry.name, entry.vendor)
+                                    if (p == null) {
+                                        Toast.makeText(context, "这个网址无效，请手动输入", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        profile = p
+                                        SchoolProfileStore.save(context, p)
+                                        Toast.makeText(context, "已选择 ${entry.name}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            ) { Text("使用", fontSize = 12.sp) }
+                        }
+                    }
+                    if (results.isEmpty()) {
+                        Text(
+                            "没找到？换短一点的关键词，或在下面手动输入教务网址。",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
 
             if (extractedText.isNotBlank()) {
@@ -760,31 +740,6 @@ fun SchoolSyncScreen(
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SchoolRow(
-    school: SchoolSite,
-    onOpenSite: () -> Unit,
-    onOpenEntry: (() -> Unit)?
-) {
-    SectionCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(school.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                Text(
-                    "${school.region} · ${school.siteUrl}",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            OutlinedButton(onClick = onOpenSite) { Text("官网", fontSize = 12.sp) }
-            if (onOpenEntry != null) {
-                Spacer(Modifier.width(6.dp))
-                Button(onClick = onOpenEntry) { Text("教务入口", fontSize = 12.sp) }
             }
         }
     }
