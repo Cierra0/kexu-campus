@@ -35,6 +35,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -71,6 +72,8 @@ class SchoolWebViewActivity : ComponentActivity() {
         const val EXTRA_TITLE = "title"
         const val EXTRA_AUTO_LOGIN = "auto_login"
         const val EXTRA_AUTO_READ = "auto_read"
+        const val EXTRA_AUTO_EHALL = "auto_ehall"
+        const val EXTRA_EHALL_TARGET = "ehall_target"
         const val EXTRA_TARGET = "target"
         const val EXTRA_TEXT = "text"
         const val EXTRA_KIND = "kind"
@@ -82,6 +85,8 @@ class SchoolWebViewActivity : ComponentActivity() {
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty()
         val autoLogin = intent.getBooleanExtra(EXTRA_AUTO_LOGIN, false)
         val autoRead = intent.getBooleanExtra(EXTRA_AUTO_READ, false)
+        val autoEhall = intent.getBooleanExtra(EXTRA_AUTO_EHALL, false)
+        val ehallTarget = intent.getStringExtra(EXTRA_EHALL_TARGET).orEmpty()
         val target = intent.getStringExtra(EXTRA_TARGET).orEmpty()
         setContent {
             KexuTheme(darkMode = 0) {
@@ -91,6 +96,8 @@ class SchoolWebViewActivity : ComponentActivity() {
                     autoLogin = autoLogin,
                     autoRead = autoRead,
                     autoReadTarget = target,
+                    autoEhall = autoEhall,
+                    ehallTarget = ehallTarget,
                     onBack = { finish() },
                     onExtract = { text, kind ->
                         setResult(
@@ -114,6 +121,49 @@ private const val MOBILE_UA =
 private const val DESKTOP_UA =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
         "Chrome/120.0.0.0 Safari/537.36"
+
+/** 办事大厅一次性脚本：已登录则点目标卡片，并收集页面/链接/iframe 里的 aTrust 代理域名。 */
+private fun ehallTickJs(targetText: String): String {
+    val target = targetText.replace("\\", "\\\\").replace("'", "\\'")
+    return """
+        (function(){
+          try{
+            var uidEl=document.getElementById('analysisUserId');
+            var nameEl=document.getElementById('ampHeaderToolUserName');
+            var tool=document.getElementById('ampHasLoginTool');
+            var uid=uidEl&&uidEl.value?uidEl.value:'';
+            var nm=nameEl?((nameEl.innerText||nameEl.textContent||'').trim()):'';
+            var on=tool&&getComputedStyle(tool).display==='block';
+            if(!((uid&&uid!=='guest')||nm.length>0||on)) return 'GUEST';
+            var target='$target';
+            function pick(){
+              var all=document.querySelectorAll('body *');
+              for(var i=0;i<all.length;i++){
+                var el=all[i];
+                if(el.children.length>0) continue;
+                var t=(el.innerText||el.textContent||'').replace(/\s+/g,'').trim();
+                if(t!==target && t.indexOf(target)<0) continue;
+                var n=el;
+                for(var k=0;k<7&&n;k++,n=n.parentElement){
+                  if(n.matches&&n.matches('a,button,[onclick],[role=button],.amp-app-item,.amp-app-card')){n.click();return 'CLICKED';}
+                  var st=getComputedStyle(n);
+                  if(st&&st.cursor==='pointer'){n.click();return 'CLICKED_POINTER';}
+                }
+              }
+              return 'WAIT';
+            }
+            var r=pick();
+            var urls=[location.href];
+            var as=document.querySelectorAll('a[href]');
+            for(var j=0;j<as.length;j++) urls.push(as[j].href);
+            try{for(var f=0;f<window.frames.length;f++){urls.push(window.frames[f].location.href);}}catch(e){}
+            var m=urls.join('\n').match(/([0-9]{1,3}-[0-9]{1,3}-[0-9]{1,3}-[0-9]{1,3}\.atrust\.ecut\.edu\.cn)/);
+            if(m) return 'PROXY:'+m[1];
+            return r;
+          }catch(e){return 'ERR:'+e;}
+        })()
+    """.trimIndent()
+}
 
 /**
  * 在页面任何脚本之前注入：把 WebView 伪装成桌面版 Google Chrome。
@@ -184,6 +234,8 @@ private fun SchoolWebScreen(
     autoLogin: Boolean,
     autoRead: Boolean,
     autoReadTarget: String,
+    autoEhall: Boolean = false,
+    ehallTarget: String = "timetable",
     onBack: () -> Unit,
     onExtract: (String, String) -> Unit
 ) {
@@ -192,7 +244,8 @@ private fun SchoolWebScreen(
     var webView by remember { mutableStateOf<WebView?>(null) }
     var loading by remember { mutableStateOf(true) }
     var autoReadTriggered by remember { mutableStateOf(false) }
-    var desktopMode by remember { mutableStateOf(true) }
+    var autoEhallDone by remember { mutableStateOf(false) }
+    var desktopMode by remember { mutableStateOf(false) }
     var popupView by remember { mutableStateOf<WebView?>(null) }
     var diagText by remember { mutableStateOf("") }
     var showDiag by remember { mutableStateOf(false) }
@@ -357,9 +410,45 @@ private fun SchoolWebScreen(
         }
     }
 
+    // 烫梨模式：办事大厅登录后自动点「学生课表查询(新)」/「学生成绩查询」，
+    // 等办事大厅跳转到 aTrust 代理域名后，直接打开对应的正方页面并自动读取。
+    LaunchedEffect(autoEhall, webView, loading) {
+        if (!autoEhall || autoEhallDone) return@LaunchedEffect
+        val targetText = if (ehallTarget == "grades") "学生成绩查询" else "学生课表查询(新)"
+        repeat(60) {
+            val w = webView ?: return@LaunchedEffect
+            val u = w.url.orEmpty()
+            if (u.contains("/jwglxt/") && !u.contains("login_slogin")) {
+                autoEhallDone = true
+                kotlinx.coroutines.delay(2200)
+                extract(if (ehallTarget == "grades") "grades" else "timetable")
+                return@LaunchedEffect
+            }
+            if (u.contains("ehall") || u.contains("atrust")) {
+                w.evaluateJavascript(ehallTickJs(targetText)) { raw ->
+                    val r = decodeJs(raw)
+                    val m = Regex(
+                        "([0-9]{1,3}-[0-9]{1,3}-[0-9]{1,3}-[0-9]{1,3}\\.atrust\\.ecut\\.edu\\.cn)"
+                    ).find(r)
+                    if (m != null && !autoEhallDone) {
+                        val path = if (ehallTarget == "grades") {
+                            "jwglxt/cjcx/cjcx_cxDgXscj.html?gnmkdm=N305005&layout=default"
+                        } else {
+                            "jwglxt/kbcx/xskbcx_cxXskbcxIndex.html?gnmkdm=N2151&layout=default"
+                        }
+                        w.loadUrl("https://${m.groupValues[1]}/$path")
+                    }
+                }
+            }
+            kotlinx.coroutines.delay(1500)
+        }
+    }
+
     fun toggleDesktopMode() {
         desktopMode = !desktopMode
-        webView?.settings?.userAgentString = if (desktopMode) DESKTOP_UA else MOBILE_UA
+        webView?.settings?.userAgentString =
+            if (desktopMode) DESKTOP_UA else webView?.settings?.userAgentString.orEmpty()
+                .replace("; wv", "")
         webView?.reload()
         Toast.makeText(
             context,
@@ -473,19 +562,14 @@ private fun SchoolWebScreen(
                         settings.setSupportMultipleWindows(true)
                         settings.loadWithOverviewMode = true
                         settings.useWideViewPort = true
-                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                        settings.userAgentString = DESKTOP_UA
+                        settings.setSupportZoom(true)
+                        settings.builtInZoomControls = true
+                        settings.displayZoomControls = false
+                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                        // 和烫梨一致：不伪造 UA，只去掉 WebView 标记，避免办事大厅/aTrust 误判
+                        settings.userAgentString = settings.userAgentString.replace("; wv", "")
                         CookieManager.getInstance().setAcceptCookie(true)
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                            runCatching {
-                                WebViewCompat.addDocumentStartJavaScript(
-                                    this,
-                                    BROWSER_SPOOF_SCRIPT,
-                                    setOf("*")
-                                )
-                            }
-                        }
                         webChromeClient = object : WebChromeClient() {
                             override fun onConsoleMessage(msg: android.webkit.ConsoleMessage): Boolean {
                                 consoleLog = (consoleLog + "[${msg.messageLevel()}] ${msg.message()} " +

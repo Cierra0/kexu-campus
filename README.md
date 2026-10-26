@@ -2,7 +2,7 @@
 
 面向高校学生的「校园时间管理」Android App。**导入优先、数据本地、不登录学校系统**。
 
-> 当前版本：0.9.9「校序」（内置 1515 所高校教务入口、统一登录教务系统、新用户三步引导；烫梨模式）
+> 当前版本：0.9.10「校序」（东华理工按烫梨模式：办事大厅登录→自动点「学生课表查询(新)」→aTrust 代理正方；不再伪造 UA）
 > 技术栈：Kotlin + Jetpack Compose + Material 3 + kotlinx.serialization
 > 包名：`com.kexu.campus`
 

@@ -177,7 +177,9 @@ fun SchoolSyncScreen(
         name: String,
         autoLogin: Boolean = false,
         autoRead: Boolean = false,
-        target: String = ""
+        target: String = "",
+        autoEhall: Boolean = false,
+        ehallTarget: String = "timetable"
     ) {
         if (url.isBlank()) return
         repo.updateSettings { it.copy(syncEntryUrl = url, syncSchoolName = name) }
@@ -189,6 +191,8 @@ fun SchoolSyncScreen(
                 putExtra(SchoolWebViewActivity.EXTRA_AUTO_LOGIN, autoLogin)
                 putExtra(SchoolWebViewActivity.EXTRA_AUTO_READ, autoRead)
                 putExtra(SchoolWebViewActivity.EXTRA_TARGET, target)
+                putExtra(SchoolWebViewActivity.EXTRA_AUTO_EHALL, autoEhall)
+                putExtra(SchoolWebViewActivity.EXTRA_EHALL_TARGET, ehallTarget)
             }
         )
     }
@@ -336,15 +340,29 @@ fun SchoolSyncScreen(
                                 openUrl(
                                     profile.loginUrl.ifBlank { profile.jwBase },
                                     profile.name,
-                                    autoLogin = store.hasAccount()
+                                    autoLogin = store.hasAccount(),
+                                    autoEhall = profile.isEcut,
+                                    ehallTarget = "timetable"
                                 )
                             },
                             modifier = Modifier.weight(1f)
-                        ) { Text("登录教务系统") }
+                        ) { Text("登录教务·课表") }
                         OutlinedButton(
-                            onClick = { startSync("timetable") },
+                            onClick = {
+                                openUrl(
+                                    profile.loginUrl.ifBlank { profile.jwBase },
+                                    profile.name,
+                                    autoLogin = store.hasAccount(),
+                                    autoEhall = profile.isEcut,
+                                    ehallTarget = "grades"
+                                )
+                            },
                             modifier = Modifier.weight(1f)
-                        ) { Text("按已保存页面导入") }
+                        ) { Text("登录教务·成绩") }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(onClick = { startSync("timetable") }) {
+                        Text("按已保存页面导入", fontSize = 11.sp)
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(
