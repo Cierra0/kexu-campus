@@ -39,12 +39,21 @@ object DocumentRecognizer {
         val centerY: Int get() = (top + bottom) / 2
     }
 
+    /** 图片里检测到的表格线（像素坐标，和 OCR line 使用同一张缩放后的图）。 */
+    data class TableGrid(
+        val vertical: List<Int>,
+        val horizontal: List<Int>,
+        val width: Int,
+        val height: Int
+    )
+
     data class Result(
         val ok: Boolean,
         val text: String = "",
         val error: String = "",
         val source: String = "",
-        val lines: List<OcrLine> = emptyList()
+        val lines: List<OcrLine> = emptyList(),
+        val grid: TableGrid? = null
     )
 
     fun recognize(context: Context, uri: Uri, displayName: String): Result = runCatching {
@@ -59,8 +68,8 @@ object DocumentRecognizer {
 
             lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") ||
                 lower.endsWith(".webp") || type.startsWith("image/") -> {
-                val (text, lines) = imageText(context, uri)
-                Result(true, text, source = "图片", lines = lines)
+                val (text, lines, grid) = imageText(context, uri)
+                Result(true, text, source = "图片", lines = lines, grid = grid)
             }
 
             else -> Result(false, error = "不支持的文件类型，请选择 PDF / .docx / 图片")
@@ -147,14 +156,15 @@ object DocumentRecognizer {
 
     // ---------------- 图片 ----------------
 
-    private fun imageText(context: Context, uri: Uri): Pair<String, List<OcrLine>> {
+    private fun imageText(context: Context, uri: Uri): Triple<String, List<OcrLine>, TableGrid?> {
         val original = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
             ?: error("无法读取图片")
         val scaled = scaleDown(original, 2400)
         val (text, lines) = ocrLines(scaled)
+        val grid = ImageGridDetector.detect(scaled)
         if (scaled !== original) original.recycle()
         scaled.recycle()
-        return text to lines
+        return Triple(text, lines, grid)
     }
 
     private fun scaleDown(bitmap: Bitmap, maxSide: Int): Bitmap {

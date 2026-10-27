@@ -96,7 +96,11 @@ fun OcrImportCard(
                 text = result.text
                 if (result.lines.isNotEmpty()) {
                     val imageItems = withContext(Dispatchers.Default) {
-                        com.kexu.campus.data.TimetableImageParser.parse(result.lines, defaultWeeks)
+                        com.kexu.campus.data.TimetableImageParser.parse(
+                            result.lines,
+                            result.grid,
+                            defaultWeeks
+                        )
                     }
                     if (imageItems.isNotEmpty()) useItems(imageItems) else reparse()
                 } else {
@@ -108,10 +112,38 @@ fun OcrImportCard(
         }
     }
 
-    SectionCard(title = "从 PDF / Word / 图片识别课表") {
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            working = true
+            error = null
+            val name = queryDisplayName(context, uri)
+            val result = withContext(Dispatchers.IO) {
+                DocumentRecognizer.recognize(context, uri, name)
+            }
+            working = false
+            if (result.ok) {
+                source = "$source（实验）"
+                text = result.text
+                error = "图片 OCR 为实验功能：识别结果可能不准，请逐条核对后再导入。"
+                val imageItems = withContext(Dispatchers.Default) {
+                    com.kexu.campus.data.TimetableImageParser.parse(
+                        result.lines,
+                        result.grid,
+                        defaultWeeks
+                    )
+                }
+                if (imageItems.isNotEmpty()) useItems(imageItems) else reparse()
+            } else {
+                error = result.error
+            }
+        }
+    }
+
+    SectionCard(title = "从 Word / PDF 导入（推荐）") {
         Text(
-            "支持 .docx（直接读表格）、.pdf（前 3 页 OCR）、JPG/PNG（OCR）。" +
-                "识别后可以先修改文字，再解析成课程勾选导入。",
+            "① .docx 直接读表格，最准；② .pdf 会识别文字。\n" +
+                "图片 OCR 已降级为实验功能（可能不准），建议优先用 Word/PDF 或让同学发分享码。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -122,15 +154,22 @@ fun OcrImportCard(
                     arrayOf(
                         "application/pdf",
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        "application/msword",
-                        "image/*"
+                        "application/msword"
                     )
                 )
             },
             enabled = !working,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(if (working) "正在识别…" else "选择 PDF / Word / 图片并识别")
+            Text(if (working) "正在识别…" else "选择 Word / PDF 导入（推荐）")
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = { imagePicker.launch(arrayOf("image/*")) },
+            enabled = !working,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (working) "正在识别…" else "图片 OCR 导入（实验，可能不准）", fontSize = 12.sp)
         }
         if (working) {
             Spacer(Modifier.height(8.dp))
