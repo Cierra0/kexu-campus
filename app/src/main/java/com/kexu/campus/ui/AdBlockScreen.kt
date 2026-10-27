@@ -1,8 +1,12 @@
 package com.kexu.campus.ui
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.net.VpnService
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,7 +46,9 @@ import com.kexu.campus.dns.DnsFilterService
 import com.kexu.campus.dns.DomainRules
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.InetAddress
 
 @Composable
 fun AdBlockScreen(data: CampusData, repo: CampusRepository, onBack: () -> Unit) {
@@ -50,6 +57,10 @@ fun AdBlockScreen(data: CampusData, repo: CampusRepository, onBack: () -> Unit) 
     var blocked by remember { mutableStateOf(DnsFilterService.blockedCount.get()) }
     var queried by remember { mutableStateOf(DnsFilterService.queriedCount.get()) }
     var ruleCounts by remember { mutableStateOf(Triple(0, 0, 0)) }
+    var privateDnsActive by remember { mutableStateOf(false) }
+    var testing by remember { mutableStateOf(false) }
+    var testResult by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     var blockText by rememberSaveable {
         mutableStateOf(data.settings.customBlockDomains.joinToString("\n"))
@@ -64,6 +75,7 @@ fun AdBlockScreen(data: CampusData, repo: CampusRepository, onBack: () -> Unit) 
             running = DnsFilterService.isRunning
             blocked = DnsFilterService.blockedCount.get()
             queried = DnsFilterService.queriedCount.get()
+            privateDnsActive = isPrivateDnsActive(context)
             delay(1500)
         }
     }
@@ -174,6 +186,54 @@ fun AdBlockScreen(data: CampusData, repo: CampusRepository, onBack: () -> Unit) 
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (privateDnsActive) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "⚠ 检测到系统「私人 DNS」已开启，它会绕过本机 DNS 拦截。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        if (Build.VERSION.SDK_INT >= 28) {
+                            OutlinedButton(
+                                onClick = {
+                                    runCatching {
+                                        context.startActivity(Intent("android.settings.PRIVATE_DNS_SETTINGS"))
+                                    }
+                                }
+                            ) { Text("去关闭私人 DNS") }
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                testing = true
+                                val caught = withContext(Dispatchers.IO) {
+                                    runCatching {
+                                        val addrs = InetAddress.getAllByName("a.tanx.com").toList()
+                                        addrs.isNotEmpty() && addrs.all {
+                                            it.isAnyLocalAddress || it.hostAddress == "0.0.0.0"
+                                        }
+                                    }.getOrDefault(false)
+                                }
+                                testing = false
+                                testResult = if (caught) {
+                                    "测试域名 a.tanx.com 已被拦截（DNS 过滤生效）"
+                                } else {
+                                    "测试域名未被拦截：确认 VPN 已开启、私人 DNS 已关闭；部分 App 的 DoH/QUIC 仍可绕过。"
+                                }
+                            }
+                        },
+                        enabled = !testing
+                    ) { Text(if (testing) "测试中…" else "测试拦截是否生效") }
+                    if (testResult.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            testResult,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
