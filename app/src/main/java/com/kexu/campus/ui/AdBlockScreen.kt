@@ -245,7 +245,9 @@ fun AdBlockScreen(data: CampusData, repo: CampusRepository, onBack: () -> Unit) 
                     val lines = listOf(
                         "• 只接管 DNS：其它流量走物理网卡，不影响定位、支付、校园网认证。",
                         "• 与其它 VPN 冲突：同一个时间只能运行一个 VPN。",
-                        "• DoH/私有 DNS 可绕过：部分 App 自带加密 DNS，无法拦截。",
+                        "• 如果已开启仍看到广告：先关闭系统「私人 DNS / Private DNS」，重启被拦截的 App 并清除它的缓存；很多开屏广告是 App 自己缓存或预加载的。",
+                        "• DoH/私有 DNS/QUIC/IP 直连可绕过：部分 App 自带加密 DNS 或直接连 IP，DNS 拦截无法处理。",
+                        "• 可把广告域名加进「自定义屏蔽」；开启「严格模式」可拦截更多疑似广告域名。",
                         "• 误杀处理：如果某个 App 因为广告加载失败而异常，把它的域名加到放行白名单。",
                         "• 仅本机、开源、非商业：请遵守各 App 的用户协议；不要用于商业分发。"
                     )
